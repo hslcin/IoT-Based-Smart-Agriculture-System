@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Example: Sending dfrobot SEN0114 Analog Soil Moisture Sensor data over LoRaWAN,
+ * Description: Sending dfrobot SEN0114 Analog Soil Moisture Sensor data over LoRaWAN,
  *          and controlling a JQC3F-05VDC-C active low relay via downlink message.
  *
  * This sketch reads data from a soil moisture sensor on analog pin A0, splits its 10-bit

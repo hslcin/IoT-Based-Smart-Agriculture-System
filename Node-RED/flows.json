@@ -62,6 +62,7 @@
         "baseapiurl": "",
         "testenvironment": false,
         "updatemode": "polling",
+        "addressfamily": "4",
         "pollinterval": 300,
         "usesocks": false,
         "sockshost": "",
@@ -129,7 +130,7 @@
         "targetType": "msg",
         "statusVal": "",
         "statusType": "auto",
-        "x": 780,
+        "x": 940,
         "y": 100,
         "wires": []
     },
@@ -137,7 +138,7 @@
         "id": "fa7e8cf4f47c6c30",
         "type": "function",
         "z": "2325619c7893e2d0",
-        "name": "lux & pir payload extraction function",
+        "name": "Extract Lux & PIR from TTN Payload Function",
         "func": "// TTN MQTT payload extraction function for Node-RED\n// This function assumes the TTN uplink message has the following structure:\n// {\n//   ...,\n//   \"uplink_message\": {\n//       ...,\n//       \"frm_payload\": \"ABAA\",\n//       ...\n//   }\n// }\n\n// Check if the incoming msg.payload is a string and parse it if needed.\nvar ttnMsg = msg.payload;\nif (typeof ttnMsg === \"string\") {\n    try {\n        ttnMsg = JSON.parse(ttnMsg);\n    } catch (err) {\n        node.error(\"Invalid JSON payload: \" + err);\n        return null;\n    }\n}\n\n// Verify the payload contains the uplink_message and frm_payload properties.\nif (!ttnMsg.uplink_message || !ttnMsg.uplink_message.frm_payload) {\n    node.error(\"Missing uplink_message or frm_payload in message\");\n    return null;\n}\n\n// Get the base64 encoded payload.\nvar frmPayload = ttnMsg.uplink_message.frm_payload;\n\n// Decode the base64 payload into a buffer.\nvar buffer = Buffer.from(frmPayload, 'base64');\n\n// Ensure the payload has at least 3 bytes (2 for ambient light, 1 for PIR sensor).\nif (buffer.length < 3) {\n    node.error(\"Payload is too short. Expected at least 3 bytes.\");\n    return null;\n}\n\n// Extract ambient light value from the first two bytes (big-endian).\nvar lux = (buffer[0] << 8) | buffer[1];\n\n// Extract PIR sensor value from the third byte.\nvar pir = buffer[2];\n\n// You can add further processing here if needed.\n// Set the decoded data as the new msg.payload.\nmsg.payload = {\n    lux: lux,      // Ambient light intensity in lux\n    pir: pir,      // PIR sensor reading (0 or 1)\n    // raw: buffer.toString('hex')  // Optional: Raw payload in hex for debugging\n};\n\nreturn msg;",
         "outputs": 1,
         "timeout": 0,
@@ -145,13 +146,14 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 540,
+        "x": 600,
         "y": 100,
         "wires": [
             [
                 "3bfd21347895c215",
                 "ac69b93263e61f38",
-                "78595b1c65273464"
+                "78595b1c65273464",
+                "c610e3debf987ac4"
             ]
         ]
     },
@@ -197,7 +199,7 @@
         "id": "dc88c57b04bca2da",
         "type": "function",
         "z": "2325619c7893e2d0",
-        "name": "moisture payload extraction function",
+        "name": "Extract Moisture Payload Function",
         "func": "/*\n  This Node-RED function extracts sensor data from a TTN MQTT message.\n  It decodes the base64-encoded \"frm_payload\" field and converts the first two bytes\n  into a sensor value (assuming a two-byte big-endian encoded value).\n*/\n\nif (\n    msg.payload &&\n    msg.payload.uplink_message &&\n    msg.payload.uplink_message.frm_payload\n) {\n    // Get the base64 encoded payload\n    var base64Payload = msg.payload.uplink_message.frm_payload;\n    \n    // Decode the base64 payload to a Buffer\n    var buffer = Buffer.from(base64Payload, 'base64');\n    \n    // Ensure we have at least two bytes of data\n    if (buffer.length >= 2) {\n        // Combine the two bytes to get the sensor value (big-endian)\n        var sensorValue = (buffer[0] << 8) | buffer[1];\n        \n        // You can also extract additional fields if needed:\n        // var deviceID = msg.payload.end_device_ids.device_id;\n        // var receivedAt = msg.payload.received_at;\n        \n        // Set the new payload to an object with the extracted sensor value.\n        msg.payload = { moistureSensorValue: sensorValue };\n    } else {\n        // If the payload is shorter than expected\n        msg.payload = { error: \"Payload too short to extract sensor value.\" };\n    }\n} else {\n    // If the message structure does not match the expected TTN format\n    msg.payload = { error: \"Invalid TTN payload structure.\" };\n}\n\nreturn msg;\n",
         "outputs": 1,
         "timeout": 0,
@@ -205,13 +207,14 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 550,
+        "x": 540,
         "y": 300,
         "wires": [
             [
                 "21251c87160238d7",
                 "0abb1b1e65963195",
-                "083534069aa76afc"
+                "083534069aa76afc",
+                "c81af4faf4454417"
             ]
         ]
     },
@@ -229,15 +232,15 @@
         "correl": "",
         "expiry": "",
         "broker": "a945e3db5ff6ef2b",
-        "x": 890,
-        "y": 600,
+        "x": 1210,
+        "y": 520,
         "wires": []
     },
     {
         "id": "0abb1b1e65963195",
         "type": "function",
         "z": "2325619c7893e2d0",
-        "name": "moisture relay control function",
+        "name": "Relay Control Function",
         "func": "/*\n   This node reads msg.payload.moistureSensorValue (set by your existing extraction node).\n   If moistureSensorValue < 300, it sends the downlink to turn the relay ON (\"AQ==\").\n   Otherwise, it sends the downlink to turn the relay OFF (\"AA==\").\n*/\n\n// Check if moistureSensorValue exists\nif (msg.payload && msg.payload.moistureSensorValue !== undefined) {\n    let sensorValue = msg.payload.moistureSensorValue;\n\n    if (sensorValue < 300) {\n        // Relay ON\n        msg.payload.moisture = {\n            downlinks: [\n                {\n                    f_port: 1,\n                    frm_payload: \"AQ==\", // Base64 for ON\n                    priority: \"HIGH\"\n                }\n            ]\n        };\n    } else {\n        // Relay OFF\n        msg.payload.moisture = {\n            downlinks: [\n                {\n                    f_port: 1,\n                    frm_payload: \"AA==\", // Base64 for OFF\n                    priority: \"HIGH\"\n                }\n            ]\n        };\n    }\n} else {\n    // Handle error: sensor value not found\n    //msg.payload.moisture = { error: \"No moistureSensorValue found in msg.payload.\" };\n    return null;\n}\n\nreturn msg;",
         "outputs": 1,
         "timeout": 0,
@@ -245,7 +248,7 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 530,
+        "x": 500,
         "y": 360,
         "wires": [
             [
@@ -308,7 +311,7 @@
         "id": "ac69b93263e61f38",
         "type": "function",
         "z": "2325619c7893e2d0",
-        "name": "send pir motion alert function",
+        "name": "Detect Motion & Notify Telegram Function",
         "func": "// Retrieve the previous PIR state from context (default to 0 if not set)\nvar prevPir = context.get('prevPir') || 0;\n\n// Extract the current PIR value from the incoming payload\nvar currentPir = (msg.payload && typeof msg.payload.pir !== 'undefined') ? msg.payload.pir : 0;\n\n// Only send a message if the PIR value changes from 0 to 1\nif (prevPir === 0 && currentPir === 1) {\n    // Update context with the current state\n    context.set('prevPir', currentPir);\n\n    // Build the Telegram-compatible payload\n    msg.payload = {\n        chatId: -4640844747,  // Example chat ID\n        type: \"message\",\n        content: \"🚨 PIR Motion Detected Object!\"\n    };\n    // Remove any extraneous options property to prevent conflicts\n    delete msg.options;\n    return msg;\n} else {\n    // Update the stored state even if no message is sent\n    context.set('prevPir', currentPir);\n    return null;\n}\n",
         "outputs": 1,
         "timeout": 0,
@@ -316,7 +319,7 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 520,
+        "x": 560,
         "y": 40,
         "wires": [
             [
@@ -337,7 +340,7 @@
         "finalize": "",
         "libs": [],
         "x": 1090,
-        "y": 280,
+        "y": 320,
         "wires": [
             [
                 "3d9db6c0268bb827"
@@ -366,7 +369,7 @@
         "id": "78595b1c65273464",
         "type": "function",
         "z": "2325619c7893e2d0",
-        "name": "send lux/pir sensor data to influxdb function",
+        "name": "Send lux/pir sensor data to influxdb function",
         "func": "// Check if payload exists\nif (!msg.payload) {\n    node.error(\"No payload found\");\n    return null;\n}\n\n// Assume the incoming payload has properties: lux and pir\nvar sensorData = msg.payload;\n\n// Give the measurement name to msg.measurement\nmsg.measurement = \"ttn_sensor\";\n\n// Put your sensor fields in msg.payload\nmsg.payload = {\n    lux: sensorData.lux,\n    pir: sensorData.pir\n};\n\n// Optionally, include a custom timestamp in msg.timestamp\nmsg.timestamp = new Date();\n\nreturn msg;\n",
         "outputs": 1,
         "timeout": 0,
@@ -446,7 +449,8 @@
                 "4b8acdbdcdb97470",
                 "515ba823ae6920eb",
                 "835a168b723e1bc8",
-                "f4111424fdf23f35"
+                "f4111424fdf23f35",
+                "4c47ae4d6949fe89"
             ]
         ]
     },
@@ -484,24 +488,24 @@
         "retentionPolicyV18Flux": "",
         "org": "hslcing",
         "bucket": "IoT",
-        "x": 1120,
-        "y": 520,
+        "x": 880,
+        "y": 560,
         "wires": []
     },
     {
         "id": "4b8acdbdcdb97470",
         "type": "function",
         "z": "2325619c7893e2d0",
-        "name": "send relay status toggle to influxdb",
-        "func": "// Ensure payload exists and contains a valid downlink array\nif (msg.payload && msg.payload.downlinks && msg.payload.downlinks.length > 0) {\n    // Extract the relay command from the first downlink item\n    let relayPayload = msg.payload.downlinks[0].frm_payload;\n    let currentState;\n\n    // Determine current state from payload\n    if (relayPayload === \"AQ==\") { // Relay is ON\n        currentState = \"ON\";\n    } else if (relayPayload === \"AA==\") { // Relay is OFF\n        currentState = \"OFF\";\n    } else {\n        // If the frm_payload is not recognized, drop the message or handle error\n        return null;\n    }\n\n    // Retrieve the previous state from context (node-level storage)\n    let previousState = context.get(\"previousState\");\n\n    // If previous state is not set (first run), initialize it without sending a message\n    if (previousState === undefined) {\n        context.set(\"previousState\", currentState);\n        return null;\n    }\n\n    // If the current state is the same as the previous, do nothing (no state change)\n    if (currentState === previousState) {\n        return null;\n    }\n\n    // A state change occurred; update the stored previous state\n    context.set(\"previousState\", currentState);\n\n    // Prepare the InfluxDB payload with the new relay state\n    msg.measurement = \"ttn_sensor\"; // Set the measurement name for InfluxDB\n    msg.payload = {\n        relayState: currentState\n    };\n    // Optionally add a timestamp (InfluxDB will use this as the measurement time)\n    msg.timestamp = new Date();\n\n    return msg;\n} else {\n    // If no valid payload is found, drop the message\n    return null;\n}\n",
+        "name": "send relay status to influxdb",
+        "func": "// Ensure payload exists and contains a valid downlink array\nif (msg.payload && msg.payload.downlinks && msg.payload.downlinks.length > 0) {\n    // Extract the relay command from the first downlink item\n    let relayPayload = msg.payload.downlinks[0].frm_payload;\n    let currentState;\n\n    // Determine current state from payload\n    if (relayPayload === \"AQ==\") { // Relay is ON\n        currentState = \"ON\";\n    } else if (relayPayload === \"AA==\") { // Relay is OFF\n        currentState = \"OFF\";\n    } else {\n        // If the frm_payload is not recognized, drop the message or handle error\n        return null;\n    }\n\n    // Prepare the InfluxDB payload with the relay state\n    msg.measurement = \"ttn_sensor\"; // Set the measurement name for InfluxDB\n    msg.payload = {\n        relayState: currentState\n    };\n    // Optionally add a timestamp (InfluxDB will use this as the measurement time)\n    msg.timestamp = new Date();\n\n    return msg;\n} else {\n    // If no valid payload is found, drop the message\n    return null;\n}\n",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 820,
-        "y": 540,
+        "x": 640,
+        "y": 560,
         "wires": [
             [
                 "7b7684f4a9cc32e1"
@@ -520,8 +524,8 @@
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 830,
-        "y": 480,
+        "x": 670,
+        "y": 500,
         "wires": [
             [
                 "7b7684f4a9cc32e1"
@@ -533,7 +537,7 @@
         "type": "debug",
         "z": "2325619c7893e2d0",
         "name": "debug 4",
-        "active": true,
+        "active": false,
         "tosidebar": true,
         "console": false,
         "tostatus": false,
@@ -558,6 +562,100 @@
         "statusType": "auto",
         "x": 800,
         "y": 360,
+        "wires": []
+    },
+    {
+        "id": "4c47ae4d6949fe89",
+        "type": "function",
+        "z": "2325619c7893e2d0",
+        "name": "Calculate Water Cost Function",
+        "func": "/*\n   This function calculates water cost based on the irrigation duration (relay ON time).\n   It uses a fixed water tariff of SGD $1.21/m³ and an assumed flow rate of 0.1 m³/min.\n   When a relay ON command (AQ==) is received, it stores the timestamp (if not already set).\n   When a relay OFF command (AA==) is received, it calculates the duration, water volume, and cost.\n   \n   NOTE: We use getTime() on Date objects to avoid TypeScript errors about arithmetic with Date objects.\n*/\n\n// Validate payload structure\nif (!msg.payload || !msg.payload.downlinks || !Array.isArray(msg.payload.downlinks) || msg.payload.downlinks.length === 0) {\n    node.error(\"Missing or invalid downlinks in payload.\");\n    return null;\n}\n\n// Extract relay command from the first downlink item\nvar relayCmd = msg.payload.downlinks[0].frm_payload;\n\n// Get stored relay ON time from context\nvar relayOnTime = context.get('relayOnTime');\n\nif (relayCmd === \"AQ==\") {\n    // Relay is turning ON: store the current timestamp only if not already stored\n    if (!relayOnTime) {\n        context.set('relayOnTime', new Date());\n    }\n    // Do not calculate water cost yet\n    return null;\n\n} else if (relayCmd === \"AA==\") {\n    // Relay is turning OFF: calculate duration and water cost\n    if (!relayOnTime) {\n        node.error(\"Relay OFF received without a recorded relay ON time.\");\n        return null;\n    }\n    \n    // Convert both 'now' and 'relayOnTime' to numeric timestamps\n    var nowTimestamp = new Date().getTime();\n    var onTimestamp = new Date(relayOnTime).getTime();\n    var durationMs = nowTimestamp - onTimestamp;\n    var durationMinutes = durationMs / 60000; // Convert milliseconds to minutes\n    \n    // Assumed flow rate: 0.1 m³ per minute\n    var flowRate = 0.1; // in m³/min\n    var waterVolume = durationMinutes * flowRate; // total volume in m³\n    \n    // Fixed water tariff: SGD $1.21 per m³\n    var waterRate = 1.21; // SGD per m³\n    var waterCost = waterVolume * waterRate;\n    \n    // Format message payload for InfluxDB\n    msg.measurement = \"ttn_sensor\";\n    msg.payload = {\n        waterCost: waterCost,\n        irrigationDurationMinutes: durationMinutes\n    };\n    msg.timestamp = new Date();\n    \n    // Clear the stored relay ON time\n    context.set('relayOnTime', null);\n    \n    return msg;\n\n} else {\n    node.error(\"Unrecognized relay command: \" + relayCmd);\n    return null;\n}\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 650,
+        "y": 620,
+        "wires": [
+            [
+                "7b7684f4a9cc32e1"
+            ]
+        ]
+    },
+    {
+        "id": "c81af4faf4454417",
+        "type": "function",
+        "z": "2325619c7893e2d0",
+        "name": "Moisture Sensor Watchdog Timer Function",
+        "func": "/*\n  Moisture Sensor Watchdog Timer Function\n  -----------------------------------------\n  This function continuously monitors for uplink messages from the Moisture Sensor.\n  - On each incoming message it clears any existing timer and starts a fresh one.\n  - If no message is received for 40 seconds, it sends a Telegram alert (with emojis) and restarts the timer.\n  \n  Wire this node after your Moisture extraction function and connect its output to your Telegram sender.\n*/\n\nvar sourceName = \"Moisture Sensor\";  // Identifies the monitored node\n\n// Clear any existing timer\nif (context.timer) {\n  clearTimeout(context.timer);\n}\n\n// Function to start (or restart) the timer\nfunction startTimer() {\n  context.timer = setTimeout(function () {\n    var alertMsg = {\n      payload: {\n        chatId: -4640844747,  // Replace with your actual Telegram chat ID\n        type: \"message\",\n        content: \"🚨⚠️ Alert: No uplink message received from \" + sourceName + \" for more than 40 seconds! ⏰\"\n      }\n    };\n    // Send the alert message to the Telegram sender node\n    node.send(alertMsg);\n    // Restart the timer so alerts continue every 40 seconds if still silent\n    startTimer();\n  }, 40000);\n}\n\n// Start the timer\nstartTimer();\n\n// Do not pass along the current incoming message\nreturn null;\n\n\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1010,
+        "y": 240,
+        "wires": [
+            [
+                "3d9db6c0268bb827",
+                "19a6b1c23939fac7"
+            ]
+        ]
+    },
+    {
+        "id": "c610e3debf987ac4",
+        "type": "function",
+        "z": "2325619c7893e2d0",
+        "name": "Lux & PIR Watchdog Timer Function",
+        "func": "/*\n  Lux & PIR Watchdog Timer Function\n  ----------------------------------\n  This function continuously monitors for uplink messages from the Lux & PIR sensor node.\n  - On each incoming message it clears any existing timer and starts a fresh one.\n  - If no message is received for 40 seconds, it sends a Telegram alert (with emojis) and restarts the timer.\n  \n  Wire this node after your Lux & PIR extraction function and connect its output to your Telegram sender.\n*/\n\nvar sourceName = \"Lux & PIR Sensor\";  // Identifies the monitored node\n\n// Clear any existing timer\nif (context.timer) {\n  clearTimeout(context.timer);\n}\n\n// Function to start (or restart) the timer\nfunction startTimer() {\n  context.timer = setTimeout(function () {\n    var alertMsg = {\n      payload: {\n        chatId: -4640844747,  // Replace with your actual Telegram chat ID\n        type: \"message\",\n        content: \"🚨⚠️ Alert: No uplink message received from \" + sourceName + \" for more than 40 seconds! ⏰\"\n      }\n    };\n    // Send the alert message to the Telegram sender node\n    node.send(alertMsg);\n    // Restart the timer so alerts continue every 40 seconds if still silent\n    startTimer();\n  }, 40000);\n}\n\n// Start the timer\nstartTimer();\n\n// Do not pass along the current incoming message\nreturn null;\n\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 970,
+        "y": 140,
+        "wires": [
+            [
+                "3d9db6c0268bb827",
+                "030a038d198a7406"
+            ]
+        ]
+    },
+    {
+        "id": "19a6b1c23939fac7",
+        "type": "debug",
+        "z": "2325619c7893e2d0",
+        "name": "debug 5",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1320,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "030a038d198a7406",
+        "type": "debug",
+        "z": "2325619c7893e2d0",
+        "name": "debug 6",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1280,
+        "y": 140,
         "wires": []
     }
 ]

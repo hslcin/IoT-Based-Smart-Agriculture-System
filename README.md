@@ -146,3 +146,72 @@ To take our smart agriculture system to the next level, we’ve built in **advan
 A **cutting-edge, real-world IoT solution** blending **environmental intelligence**, **automation**, and **real-time communication**, making agriculture **smarter, efficient, and sustainable**.
 
 It’s designed not only to optimize agricultural practices but to empower you with **actionable insights** for a **sustainable future**. Step into the future of **smart farming**—where **every drop counts** and every alert drives efficiency!
+
+```plantuml
+@startuml
+title Smart Agriculture System — Data Processing & Analytics Flow
+
+actor Farmer
+participant "LoRa Device 1\n(Lux & PIR)" as Device1
+participant "LoRa Device 2\n(Moisture & Relay)" as Device2
+participant "TTN\n(MQTT Broker)\n(Uses TLS)" as TTN
+participant "Node-RED\n(Data Processing Engine)" as NodeRED
+participant "NEA Weather API" as NEA
+participant "InfluxDB" as Influx
+participant "Telegram Bot" as Telegram
+
+== Sensor Data Uplink ==
+Device1 -> TTN : Send base64 payload (every 10 sec)
+Device2 -> TTN : Send base64 payload (every 10 sec)
+TTN -> NodeRED : Forward secure MQTT message
+
+== Payload Decoding & Extraction ==
+NodeRED -> NodeRED : Decode base64 payload
+NodeRED -> NodeRED : Extract sensor values\n• Lux, PIR (Device1)\n• Moisture (Device2)
+NodeRED -> NodeRED : Retrieve metadata (RSSI, SNR)
+NodeRED -> NodeRED : Validate payload structure
+
+== Lux & PIR Sensor Flow ==
+NodeRED -> Influx : Store sensor data (lux, PIR, metadata)\n[Tags: Device ID, Location, Sensor Type]
+alt Motion Detected (PIR == 1)
+    NodeRED -> Telegram : Send motion alert
+end
+NodeRED -> NodeRED : Reset Lux & PIR watchdog timer
+alt No Data Received (40 sec)
+    NodeRED -> Telegram : Send watchdog alert for Lux & PIR Sensor
+end
+
+== Moisture & Relay Flow ==
+NodeRED -> NodeRED : Check moisture value (< 300?)
+alt Moisture < Threshold
+    NodeRED -> NEA : Request 2-hour weather forecast
+    NEA --> NodeRED : Return forecast data
+    NodeRED -> Influx : Log forecast data
+    alt Forecast indicates Rain
+         NodeRED -> NodeRED : Decide: Relay OFF
+    else No Rain
+         NodeRED -> NodeRED : Decide: Relay ON
+    end
+else Moisture ≥ Threshold
+    NodeRED -> NodeRED : Decide: Relay OFF
+end
+NodeRED -> Influx : Store moisture data & relay command
+NodeRED -> Telegram : Notify relay status change
+NodeRED -> NodeRED : Reset Moisture watchdog timer
+alt No Data Received (40 sec)
+    NodeRED -> Telegram : Send watchdog alert for Moisture Sensor
+end
+
+== Relay Command Handling ==
+alt Relay ON Command
+    NodeRED -> NodeRED : Record irrigation start time
+else Relay OFF Command
+    NodeRED -> NodeRED : Calculate irrigation duration = Now - Start Time
+    NodeRED -> NodeRED : Compute water volume (duration * 0.1 m³/min)
+    NodeRED -> NodeRED : Calculate water cost (volume * SGD 3.24/m³)
+    NodeRED -> Influx : Log irrigation event (duration, cost)
+end
+
+@enduml
+
+```

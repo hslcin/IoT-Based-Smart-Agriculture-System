@@ -118,28 +118,11 @@
         ]
     },
     {
-        "id": "3bfd21347895c215",
-        "type": "debug",
-        "z": "2325619c7893e2d0",
-        "name": "debug 1",
-        "active": false,
-        "tosidebar": true,
-        "console": false,
-        "tostatus": false,
-        "complete": "payload",
-        "targetType": "msg",
-        "statusVal": "",
-        "statusType": "auto",
-        "x": 940,
-        "y": 100,
-        "wires": []
-    },
-    {
         "id": "fa7e8cf4f47c6c30",
         "type": "function",
         "z": "2325619c7893e2d0",
         "name": "Extract Lux & PIR from TTN Payload Function",
-        "func": "// TTN MQTT payload extraction function for Node-RED\n// This function assumes the TTN uplink message has the following structure:\n// {\n//   ...,\n//   \"uplink_message\": {\n//       ...,\n//       \"frm_payload\": \"ABAA\",\n//       ...\n//   }\n// }\n\n// Check if the incoming msg.payload is a string and parse it if needed.\nvar ttnMsg = msg.payload;\nif (typeof ttnMsg === \"string\") {\n    try {\n        ttnMsg = JSON.parse(ttnMsg);\n    } catch (err) {\n        node.error(\"Invalid JSON payload: \" + err);\n        return null;\n    }\n}\n\n// Verify the payload contains the uplink_message and frm_payload properties.\nif (!ttnMsg.uplink_message || !ttnMsg.uplink_message.frm_payload) {\n    node.error(\"Missing uplink_message or frm_payload in message\");\n    return null;\n}\n\n// Get the base64 encoded payload.\nvar frmPayload = ttnMsg.uplink_message.frm_payload;\n\n// Decode the base64 payload into a buffer.\nvar buffer = Buffer.from(frmPayload, 'base64');\n\n// Ensure the payload has at least 3 bytes (2 for ambient light, 1 for PIR sensor).\nif (buffer.length < 3) {\n    node.error(\"Payload is too short. Expected at least 3 bytes.\");\n    return null;\n}\n\n// Extract ambient light value from the first two bytes (big-endian).\nvar lux = (buffer[0] << 8) | buffer[1];\n\n// Extract PIR sensor value from the third byte.\nvar pir = buffer[2];\n\n// You can add further processing here if needed.\n// Set the decoded data as the new msg.payload.\nmsg.payload = {\n    lux: lux,      // Ambient light intensity in lux\n    pir: pir,      // PIR sensor reading (0 or 1)\n    // raw: buffer.toString('hex')  // Optional: Raw payload in hex for debugging\n};\n\nreturn msg;",
+        "func": "// TTN MQTT payload extraction function for Node-RED\n// This function extracts:\n//  - Ambient light value (lux) from first 2 bytes (big-endian)\n//  - PIR sensor value (0 or 1) from 3rd byte\n//  - RSSI and SNR from TTN metadata\n//  - Device ID from the TTN message\n//  - Location and Sensor Type (hardcoded)\n\n// Step 1: Check and parse the input payload if it's a string\nvar ttnMsg = msg.payload;\nif (typeof ttnMsg === \"string\") {\n    try {\n        ttnMsg = JSON.parse(ttnMsg);\n    } catch (err) {\n        node.error(\"Invalid JSON payload: \" + err);\n        return null;\n    }\n}\n\n// Step 2: Validate required fields\nif (!ttnMsg.uplink_message || !ttnMsg.uplink_message.frm_payload) {\n    node.error(\"Missing uplink_message or frm_payload in message\");\n    return null;\n}\n\n// Step 3: Decode the base64 payload into a buffer\nvar frmPayload = ttnMsg.uplink_message.frm_payload;\nvar buffer = Buffer.from(frmPayload, 'base64');\n\n// Step 4: Ensure the payload is at least 3 bytes long\nif (buffer.length < 3) {\n    node.error(\"Payload is too short. Expected at least 3 bytes.\");\n    return null;\n}\n\n// Step 5: Extract sensor data from buffer\nvar lux = (buffer[0] << 8) | buffer[1];  // Ambient light in lux (16-bit big-endian)\nvar pir = buffer[2];                    // PIR sensor state (1 byte)\n\n// Step 6: Attempt to extract RSSI and SNR from metadata\nvar rssi = null;\nvar snr = null;\n\nif (Array.isArray(ttnMsg.uplink_message.rx_metadata) && ttnMsg.uplink_message.rx_metadata.length > 0) {\n    var metadata = ttnMsg.uplink_message.rx_metadata[0]; // Use first gateway metadata\n    rssi = metadata.rssi !== undefined ? metadata.rssi : null;\n    snr = metadata.snr !== undefined ? metadata.snr : null;\n} else if (ttnMsg.uplink_message.settings) {\n    snr = ttnMsg.uplink_message.settings.snr !== undefined ? ttnMsg.uplink_message.settings.snr : null;\n}\n\n// Step 7: Extract device ID\nvar deviceId = ttnMsg.end_device_ids && ttnMsg.end_device_ids.device_id ? ttnMsg.end_device_ids.device_id : null;\n\n// Step 8: Output the extracted values\nmsg.payload = {\n    device_id: deviceId,     // TTN Device ID\n    lux: lux,                // Ambient light intensity in lux\n    pir: pir,                // PIR sensor reading (0 or 1)\n    rssi: rssi,              // Received Signal Strength Indicator\n    snr: snr,                // Signal-to-Noise Ratio\n    location: 'Punggol',     // Fixed location identifier\n    sensor_type: 'lux_pir'   // Sensor type descriptor\n    // raw: buffer.toString('hex') // Optional raw payload\n};\n\nreturn msg;\n",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
@@ -150,10 +133,10 @@
         "y": 100,
         "wires": [
             [
-                "3bfd21347895c215",
                 "ac69b93263e61f38",
                 "78595b1c65273464",
-                "c610e3debf987ac4"
+                "c610e3debf987ac4",
+                "3bfd21347895c215"
             ]
         ]
     },
@@ -179,28 +162,11 @@
         ]
     },
     {
-        "id": "21251c87160238d7",
-        "type": "debug",
-        "z": "2325619c7893e2d0",
-        "name": "debug 2",
-        "active": false,
-        "tosidebar": true,
-        "console": false,
-        "tostatus": false,
-        "complete": "payload",
-        "targetType": "msg",
-        "statusVal": "",
-        "statusType": "auto",
-        "x": 800,
-        "y": 300,
-        "wires": []
-    },
-    {
         "id": "dc88c57b04bca2da",
         "type": "function",
         "z": "2325619c7893e2d0",
         "name": "Extract Moisture Payload Function",
-        "func": "/*\n  This Node-RED function extracts sensor data from a TTN MQTT message.\n  It decodes the base64-encoded \"frm_payload\" field and converts the first two bytes\n  into a sensor value (assuming a two-byte big-endian encoded value).\n*/\n\nif (\n    msg.payload &&\n    msg.payload.uplink_message &&\n    msg.payload.uplink_message.frm_payload\n) {\n    // Get the base64 encoded payload\n    var base64Payload = msg.payload.uplink_message.frm_payload;\n    \n    // Decode the base64 payload to a Buffer\n    var buffer = Buffer.from(base64Payload, 'base64');\n    \n    // Ensure we have at least two bytes of data\n    if (buffer.length >= 2) {\n        // Combine the two bytes to get the sensor value (big-endian)\n        var sensorValue = (buffer[0] << 8) | buffer[1];\n        \n        // You can also extract additional fields if needed:\n        // var deviceID = msg.payload.end_device_ids.device_id;\n        // var receivedAt = msg.payload.received_at;\n        \n        // Set the new payload to an object with the extracted sensor value.\n        msg.payload = { moistureSensorValue: sensorValue };\n    } else {\n        // If the payload is shorter than expected\n        msg.payload = { error: \"Payload too short to extract sensor value.\" };\n    }\n} else {\n    // If the message structure does not match the expected TTN format\n    msg.payload = { error: \"Invalid TTN payload structure.\" };\n}\n\nreturn msg;\n",
+        "func": "/*\n  This Node-RED function extracts sensor data, RSSI, SNR, device_id, and adds fixed metadata like location and sensor type.\n  - Decodes the base64-encoded \"frm_payload\" to extract a sensor value (2-byte big-endian).\n  - Extracts RSSI and SNR from the uplink metadata (if available).\n  - Adds device_id from TTN message.\n  - Adds fixed location ('Punggol') and sensor_type ('moisture').\n*/\n\nif (\n    msg.payload &&\n    msg.payload.uplink_message &&\n    msg.payload.uplink_message.frm_payload\n) {\n    var uplink = msg.payload.uplink_message;\n\n    // Step 1: Decode base64 payload to Buffer\n    var buffer = Buffer.from(uplink.frm_payload, 'base64');\n\n    // Step 2: Extract sensor value (first 2 bytes, big-endian)\n    var sensorValue = null;\n    if (buffer.length >= 2) {\n        sensorValue = (buffer[0] << 8) | buffer[1];\n    }\n\n    // Step 3: Extract RSSI and SNR from metadata (if available)\n    var rssi = null;\n    var snr = null;\n    if (\n        uplink.rx_metadata &&\n        uplink.rx_metadata.length > 0\n    ) {\n        // Use the first gateway's metadata\n        var metadata = uplink.rx_metadata[0];\n        rssi = metadata.rssi !== undefined ? metadata.rssi : null;\n        snr = metadata.snr !== undefined ? metadata.snr : null;\n    }\n\n    // Step 4: Extract device_id (if available)\n    var deviceId = null;\n    if (\n        msg.payload.end_device_ids &&\n        msg.payload.end_device_ids.device_id\n    ) {\n        deviceId = msg.payload.end_device_ids.device_id;\n    }\n\n    // Step 5: Return structured payload with added metadata\n    msg.payload = {\n        device_id: deviceId,\n        sensor_type: \"moisture\",\n        location: \"Punggol\",\n        moistureSensorValue: sensorValue,\n        rssi: rssi,\n        snr: snr\n    };\n\n} else {\n    msg.payload = { error: \"Invalid TTN payload structure.\" };\n}\n\nreturn msg;\n",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
@@ -211,10 +177,10 @@
         "y": 300,
         "wires": [
             [
-                "21251c87160238d7",
                 "0abb1b1e65963195",
                 "083534069aa76afc",
-                "c81af4faf4454417"
+                "c81af4faf4454417",
+                "21251c87160238d7"
             ]
         ]
     },
@@ -253,8 +219,8 @@
         "wires": [
             [
                 "61c3b90cf99a473f",
-                "40d0dfc16b6a6eba",
-                "73b9d709e1f98f31"
+                "73b9d709e1f98f31",
+                "40d0dfc16b6a6eba"
             ]
         ]
     },
@@ -370,7 +336,7 @@
         "type": "function",
         "z": "2325619c7893e2d0",
         "name": "Send lux/pir sensor data to influxdb function",
-        "func": "// Check if payload exists\nif (!msg.payload) {\n    node.error(\"No payload found\");\n    return null;\n}\n\n// Assume the incoming payload has properties: lux and pir\nvar sensorData = msg.payload;\n\n// Give the measurement name to msg.measurement\nmsg.measurement = \"ttn_sensor\";\n\n// Put your sensor fields in msg.payload\nmsg.payload = {\n    lux: sensorData.lux,\n    pir: sensorData.pir\n};\n\n// Optionally, include a custom timestamp in msg.timestamp\nmsg.timestamp = new Date();\n\nreturn msg;\n",
+        "func": "// Step 1: Check if payload exists\nif (!msg.payload) {\n    node.error(\"No payload found\");\n    return null;\n}\n\n// Step 2: Extract incoming sensor data (assumes fields: 'lux', 'pir', 'device_id', 'location', 'sensor_type', 'rssi', 'snr')\nvar sensorData = msg.payload;\n\n// Step 3: Define the measurement name for InfluxDB\nmsg.measurement = \"sensor_data\";\n\n// Step 4: Structure the fields for InfluxDB (key-value pairs that represent sensor measurements)\n// These are values that change frequently and are stored as numeric data\nmsg.payload = {\n    lux: sensorData.lux,\n    pir: sensorData.pir,\n    rssi: sensorData.rssi,\n    snr: sensorData.snr\n};\n\n// Step 5: Define the tags for InfluxDB (static descriptors used for indexing and filtering)\n// Tags should be strings and low-cardinality\nmsg.tags = {\n    device_id: sensorData.device_id || \"unknown_device\",\n    location: sensorData.location || \"unknown_location\",\n    sensor_type: sensorData.sensor_type || \"unknown_sensor\"\n};\n\n// Step 6: Add a timestamp (optional, if not set InfluxDB will generate one automatically)\nmsg.timestamp = new Date();\n\n// node.warn(msg);    // Logs only the msg that will be sent to InfluxDB\n\n// Step 7: Return the modified message object to InfluxDB output\nreturn msg;\n",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
@@ -390,7 +356,7 @@
         "type": "function",
         "z": "2325619c7893e2d0",
         "name": "send moisture sensor data to influxdb function",
-        "func": "\n// Check if payload exists and doesn't already contain an error\nif (!msg.payload || msg.payload.error) {\n    node.error(\"Invalid or missing moisture sensor data: \" + (msg.payload ? msg.payload.error : \"No payload\"));\n    return null;\n}\n\n// Retrieve the moisture sensor value from the previous function\nvar sensorValue = msg.payload.moistureSensorValue;\n\n// Validate that the sensor value is a number\nif (typeof sensorValue !== 'number') {\n    node.error(\"Sensor value is not a number.\");\n    return null;\n}\n\n// Set the measurement name for InfluxDB\nmsg.measurement = \"ttn_sensor\";\n\n// Format the payload with the sensor value for InfluxDB\nmsg.payload = {\n    moistureSensorValue: sensorValue\n};\n\n// Optionally add a timestamp (InfluxDB will use this as the measurement time)\nmsg.timestamp = new Date();\n\nreturn msg;\n",
+        "func": "// Step 1: Check if payload exists and doesn't already contain an error\nif (!msg.payload || msg.payload.error) {\n    node.error(\"Invalid or missing sensor data: \" + (msg.payload ? msg.payload.error : \"No payload\"));\n    return null;\n}\n\n// Step 2: Extract values from the payload\nvar sensorValue = msg.payload.moistureSensorValue;\nvar rssi = msg.payload.rssi;\nvar snr = msg.payload.snr;\nvar deviceId = msg.payload.device_id;\nvar location = msg.payload.location;\nvar sensorType = msg.payload.sensor_type;\n\n// Step 3: Validate that sensorValue, rssi, and snr are numbers\nif (typeof sensorValue !== 'number') {\n    node.error(\"Sensor value is not a number.\");\n    return null;\n}\nif (typeof rssi !== 'number') {\n    node.error(\"RSSI is not a number.\");\n    return null;\n}\nif (typeof snr !== 'number') {\n    node.error(\"SNR is not a number.\");\n    return null;\n}\n\n// Step 4: Set the InfluxDB measurement name\nmsg.measurement = \"sensor_data\";\n\n// Step 5: Set InfluxDB tags\nmsg.tags = {\n    device_id: deviceId || \"unknown_device\",\n    location: location || \"unknown_location\",\n    sensor_type: sensorType || \"moisture_sensor\"\n};\n\n// Step 6: Set InfluxDB fields (the actual data values to be stored)\nmsg.payload = {\n    moistureSensorValue: sensorValue,\n    rssi: rssi,\n    snr: snr\n};\n\n// node.warn(msg);    // Logs only the msg that will be sent to InfluxDB\n\n// Step 7: Set optional timestamp\nmsg.timestamp = new Date();\n\nreturn msg;\n",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
@@ -497,7 +463,7 @@
         "type": "function",
         "z": "2325619c7893e2d0",
         "name": "send relay status to influxdb",
-        "func": "// Ensure payload exists and contains a valid downlink array\nif (msg.payload && msg.payload.downlinks && msg.payload.downlinks.length > 0) {\n    // Extract the relay command from the first downlink item\n    let relayPayload = msg.payload.downlinks[0].frm_payload;\n    let currentState;\n\n    // Determine current state from payload\n    if (relayPayload === \"AQ==\") { // Relay is ON\n        currentState = \"ON\";\n    } else if (relayPayload === \"AA==\") { // Relay is OFF\n        currentState = \"OFF\";\n    } else {\n        // If the frm_payload is not recognized, drop the message or handle error\n        return null;\n    }\n\n    // Prepare the InfluxDB payload with the relay state\n    msg.measurement = \"ttn_sensor\"; // Set the measurement name for InfluxDB\n    msg.payload = {\n        relayState: currentState\n    };\n    // Optionally add a timestamp (InfluxDB will use this as the measurement time)\n    msg.timestamp = new Date();\n\n    return msg;\n} else {\n    // If no valid payload is found, drop the message\n    return null;\n}\n",
+        "func": "// Ensure the payload exists and contains a valid downlinks array\nif (msg.payload && Array.isArray(msg.payload.downlinks) && msg.payload.downlinks.length > 0) {\n    // Step 1: Extract the relay command from the first downlink item's frm_payload\n    let relayPayload = msg.payload.downlinks[0].frm_payload;\n    let currentState;\n\n    // Step 2: Determine the current relay state from the base64 payload\n    if (relayPayload === \"AQ==\") {\n        currentState = \"ON\"; // Relay is ON\n    } else if (relayPayload === \"AA==\") {\n        currentState = \"OFF\"; // Relay is OFF\n    } else {\n        // Step 3: If the payload is unrecognized, discard the message\n        return null;\n    }\n\n    // Step 4: Prepare the payload for InfluxDB with measurement and tags\n    msg.measurement = \"irrigation_event\"; // InfluxDB measurement name\n    msg.payload = {\n        relayState: currentState\n    };\n\n    // Step 5: Add tags, including the location\n    msg.tags = {\n        location: \"Punggol\"\n    };\n\n    // Step 6: Optionally include a timestamp (used by InfluxDB)\n    msg.timestamp = new Date();\n\n    return msg;\n} else {\n    // No valid payload found, discard the message\n    return null;\n}\n",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
@@ -517,7 +483,7 @@
         "type": "function",
         "z": "2325619c7893e2d0",
         "name": "send rain forecast to influxdb function",
-        "func": "// Check if payload exists and doesn't already contain an error\nif (!msg.payload || msg.payload.error) {\n    node.error(\"Invalid or missing forecast data: \" + (msg.payload ? msg.payload.error : \"No payload\"));\n    return null;\n}\n\n// Verify the expected forecast data structure exists\nif (!msg.payload.data || !msg.payload.data.items || !Array.isArray(msg.payload.data.items) || msg.payload.data.items.length === 0) {\n    node.error(\"Forecast data structure is missing or empty.\");\n    return null;\n}\n\n// Retrieve the forecasts array from the first item\nvar forecasts = msg.payload.data.items[0].forecasts;\nif (!forecasts || !Array.isArray(forecasts)) {\n    node.error(\"Forecasts array is missing or not an array.\");\n    return null;\n}\n\n// Find the forecast for the \"Punggol\" area\nvar punggolForecast = null;\nfor (var i = 0; i < forecasts.length; i++) {\n    if (forecasts[i].area === \"Punggol\") {\n        punggolForecast = forecasts[i].forecast;\n        break;\n    }\n}\n\n// Validate that a forecast was found and is a string\nif (typeof punggolForecast !== 'string') {\n    node.error(\"Forecast for Punggol not found or invalid.\");\n    return null;\n}\n\n// Set the measurement name for InfluxDB\nmsg.measurement = \"ttn_sensor\";\n\n// Format the payload for InfluxDB with the Punggol forecast\nmsg.payload = {\n    punggolForecast: punggolForecast\n};\n\n// Optionally add a timestamp (InfluxDB will use this as the measurement time)\nmsg.timestamp = new Date();\n\nreturn msg;\n",
+        "func": "// Step 1: Validate payload existence and check for error\nif (!msg.payload || msg.payload.error) {\n    node.error(\"Invalid or missing forecast data: \" + (msg.payload ? msg.payload.error : \"No payload\"));\n    return null;\n}\n\n// Step 2: Ensure forecast data structure is valid\nconst items = msg.payload.data?.items;\nif (!items || !Array.isArray(items) || items.length === 0) {\n    node.error(\"Forecast data structure is missing or empty.\");\n    return null;\n}\n\n// Step 3: Extract forecasts array\nconst forecasts = items[0].forecasts;\nif (!forecasts || !Array.isArray(forecasts)) {\n    node.error(\"Forecasts array is missing or not an array.\");\n    return null;\n}\n\n// Step 4: Search for Punggol forecast\nlet weatherForecast = null;\nfor (let i = 0; i < forecasts.length; i++) {\n    if (forecasts[i].area === \"Punggol\") {\n        weatherForecast = forecasts[i].forecast;\n        break;\n    }\n}\n\n// Step 5: Validate forecast result\nif (typeof weatherForecast !== 'string') {\n    node.error(\"Forecast for Punggol not found or invalid.\");\n    return null;\n}\n\n// Step 6: Prepare payload for InfluxDB\nmsg.measurement = \"irrigation_event\";\nmsg.payload = {\n    weather_forecast: weatherForecast\n};\n\n// Step 7: Add tags (location: Punggol) and timestamp\nmsg.tags = {\n    location: \"Punggol\"\n};\nmsg.timestamp = new Date();  // Optional: InfluxDB uses this as measurement time\n\n// Step 8: Return modified message object\nreturn msg;\n",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
@@ -549,27 +515,11 @@
         "wires": []
     },
     {
-        "id": "40d0dfc16b6a6eba",
-        "type": "debug",
-        "z": "2325619c7893e2d0",
-        "name": "debug 7",
-        "active": false,
-        "tosidebar": true,
-        "console": false,
-        "tostatus": false,
-        "complete": "false",
-        "statusVal": "",
-        "statusType": "auto",
-        "x": 800,
-        "y": 360,
-        "wires": []
-    },
-    {
         "id": "4c47ae4d6949fe89",
         "type": "function",
         "z": "2325619c7893e2d0",
         "name": "Calculate Water Cost Function",
-        "func": "/*\n   This function calculates water cost based on the irrigation duration (relay ON time).\n   It uses a fixed water tariff of SGD $1.21/m³ and an assumed flow rate of 0.1 m³/min.\n   When a relay ON command (AQ==) is received, it stores the timestamp (if not already set).\n   When a relay OFF command (AA==) is received, it calculates the duration, water volume, and cost.\n   \n   NOTE: We use getTime() on Date objects to avoid TypeScript errors about arithmetic with Date objects.\n*/\n\n// Validate payload structure\nif (!msg.payload || !msg.payload.downlinks || !Array.isArray(msg.payload.downlinks) || msg.payload.downlinks.length === 0) {\n    node.error(\"Missing or invalid downlinks in payload.\");\n    return null;\n}\n\n// Extract relay command from the first downlink item\nvar relayCmd = msg.payload.downlinks[0].frm_payload;\n\n// Get stored relay ON time from context\nvar relayOnTime = context.get('relayOnTime');\n\nif (relayCmd === \"AQ==\") {\n    // Relay is turning ON: store the current timestamp only if not already stored\n    if (!relayOnTime) {\n        context.set('relayOnTime', new Date());\n    }\n    // Do not calculate water cost yet\n    return null;\n\n} else if (relayCmd === \"AA==\") {\n    // Relay is turning OFF: calculate duration and water cost\n    if (!relayOnTime) {\n        node.error(\"Relay OFF received without a recorded relay ON time.\");\n        return null;\n    }\n    \n    // Convert both 'now' and 'relayOnTime' to numeric timestamps\n    var nowTimestamp = new Date().getTime();\n    var onTimestamp = new Date(relayOnTime).getTime();\n    var durationMs = nowTimestamp - onTimestamp;\n    var durationMinutes = durationMs / 60000; // Convert milliseconds to minutes\n    \n    // Assumed flow rate: 0.1 m³ per minute\n    var flowRate = 0.1; // in m³/min\n    var waterVolume = durationMinutes * flowRate; // total volume in m³\n    \n    // Fixed water tariff: SGD $1.21 per m³\n    var waterRate = 1.21; // SGD per m³\n    var waterCost = waterVolume * waterRate;\n    \n    // Format message payload for InfluxDB\n    msg.measurement = \"ttn_sensor\";\n    msg.payload = {\n        waterCost: waterCost,\n        irrigationDurationMinutes: durationMinutes\n    };\n    msg.timestamp = new Date();\n    \n    // Clear the stored relay ON time\n    context.set('relayOnTime', null);\n    \n    return msg;\n\n} else {\n    node.error(\"Unrecognized relay command: \" + relayCmd);\n    return null;\n}\n",
+        "func": "/*\n   This function calculates water cost based on the irrigation duration (relay ON time).\n   It uses a fixed water tariff of SGD $1.21/m³ and an assumed flow rate of 0.1 m³/min.\n   When a relay ON command (\"AQ==\") is received, it stores the timestamp (if not already set).\n   When a relay OFF command (\"AA==\") is received, it calculates the duration, water volume, and cost.\n\n   NOTE: We use getTime() on Date objects to avoid TypeScript errors during date arithmetic.\n*/\n\n// Validate payload structure\nif (!msg.payload || !msg.payload.downlinks || !Array.isArray(msg.payload.downlinks) || msg.payload.downlinks.length === 0) {\n    node.error(\"Missing or invalid downlinks in payload.\");\n    return null;\n}\n\n// Extract relay command from the first downlink item\nvar relayCmd = msg.payload.downlinks[0].frm_payload;\n\n// Retrieve stored relay ON time from context\nvar relayOnTime = context.get('relayOnTime');\n\nif (relayCmd === \"AQ==\") {\n    // Relay is turning ON: store the current timestamp only if not already stored\n    if (!relayOnTime) {\n        context.set('relayOnTime', new Date());\n    }\n    // No calculation yet\n    return null;\n\n} else if (relayCmd === \"AA==\") {\n    // Relay is turning OFF: proceed to calculate duration and water cost\n    if (!relayOnTime) {\n        node.error(\"Relay OFF received without a recorded relay ON time.\");\n        return null;\n    }\n\n    // Convert both timestamps to numeric values for calculation\n    var nowTimestamp = new Date().getTime();\n    var onTimestamp = new Date(relayOnTime).getTime();\n    var durationMs = nowTimestamp - onTimestamp;\n    var durationMinutes = durationMs / 60000; // Convert to minutes\n\n    // Constants\n    var flowRate = 0.1; // in m³/min\n    var waterRate = 3.24; // SGD per m³\n\n    // Compute water volume and cost\n    var waterVolume = durationMinutes * flowRate;\n    var waterCost = waterVolume * waterRate;\n\n    // Format message payload for InfluxDB\n    msg.measurement = \"irrigation_event\";\n    msg.payload = {\n        waterCost: waterCost,\n        irrigationDurationMinutes: durationMinutes\n    };\n    msg.tags = {\n        location: \"Punggol\"\n    };\n    msg.timestamp = new Date();\n\n    // Clear the stored ON time\n    context.set('relayOnTime', null);\n\n    node.warn(msg);    // Logs only the msg that will be sent to InfluxDB\n\n    return msg;\n\n} else {\n    node.error(\"Unrecognized relay command: \" + relayCmd);\n    return null;\n}\n",
         "outputs": 1,
         "timeout": 0,
         "noerr": 0,
@@ -656,6 +606,56 @@
         "statusType": "auto",
         "x": 1280,
         "y": 140,
+        "wires": []
+    },
+    {
+        "id": "3bfd21347895c215",
+        "type": "debug",
+        "z": "2325619c7893e2d0",
+        "name": "debug 1",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 940,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "40d0dfc16b6a6eba",
+        "type": "debug",
+        "z": "2325619c7893e2d0",
+        "name": "debug 7",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 800,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "21251c87160238d7",
+        "type": "debug",
+        "z": "2325619c7893e2d0",
+        "name": "debug 2",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 800,
+        "y": 300,
         "wires": []
     }
 ]
